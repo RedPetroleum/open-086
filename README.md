@@ -51,21 +51,51 @@ Flashing the firmware of the ESP32-S3 is then possible through the ESP32-C3.
 
 
 1. Flash [`esp32c3_flash_bridge/`](esp32c3_flash_bridge/) onto the C3
-   (board *ESP32C3 Dev Module*, *USB CDC On Boot: Enabled*)
-2. Wire it up, switch the console on
-3. USB cable into the **C3** — the console's own port stays empty
+   (board *ESP32C3 Dev Module*, *USB CDC On Boot: Enabled*), e.g. with `arduino-cli`:
+   ```
+   arduino-cli compile -u -p /dev/cu.usbmodemXXXX -b esp32:esp32:esp32c3:CDCOnBoot=cdc esp32c3_flash_bridge
+   ```
+2. USB cable into the **C3** — the console's own port stays empty
+3. Switch the console on and **keep the power button pressed** (see below)
 4. `./backup_firmware.sh` — **first**, there is no factory backup
 5. `./flash_firmware.sh firmware.bin`
-6. Switch the console off and on again with its own switch
+6. Release the power button — the console switches off; switch it on normally
+
+The scripts restart the C3 from the Mac, and on startup the bridge puts the S3 into download
+mode via EN and IO0. The C3's RST button therefore does not need to be reachable.
+
+### Power button
 
 In download mode no firmware holds the power latch, so the console switches itself off as
-soon as the C3 resets the S3. Keep the power button pressed, or bridge it for the whole
-backup (~5 min for 16 MB at 921600 baud). The scripts restart the C3 from the Mac themselves, so its RST
-button does not need to be reachable.
+soon as the S3 is reset. Power through the console's USB-C port does not keep it on either.
+Keep the power button pressed for the whole run — a weight on it works — or bridge it.
 
-The bridge follows esptool's baud rate change, so the scripts run at 921600 baud (override with `BAUD=115200`).
+### Speed
 
-The scripts need `esptool` v5 in PATH.
+The bridge follows esptool's baud rate change, so the scripts run at 921600 baud: a full
+backup of the 16 MB flash takes about 5 minutes. Override with `BAUD=115200 ./backup_firmware.sh`.
+
+Check a backup against the chip (the S3 computes the hash itself, takes seconds):
+
+```
+esptool --chip esp32s3 -p /dev/cu.usbmodemXXXX -b 921600 --before no-reset --after no-reset \
+        verify-flash 0 backup_XXXX.bin
+```
+
+The scripts need `esptool` v5 in PATH. Backups (`backup*.bin`) are git-ignored — keep a copy
+somewhere safe, the factory firmware is not available for download.
+
+### Factory flash layout
+
+| Partition | Offset | Size | Content |
+|---|---|---|---|
+| nvs | 0x009000 | 20 KB | settings |
+| otadata | 0x00e000 | 8 KB | boot selection |
+| factory | 0x010000 | 4 MB | main firmware |
+| ffat | 0x410000 | 7 MB | game storage (`NO NAME` over USB) |
+| app0 | 0xb10000 | 4 MB | second app, presumably Xiaozhi AI |
+| model | 0xf10000 | 896 KB | speech model |
+| coredump | 0xff0000 | 64 KB | crash dumps |
 
 ## Hardware
 
