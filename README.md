@@ -60,10 +60,10 @@ Flashing the firmware of the ESP32-S3 is then possible through the ESP32-C3.
 
 In download mode no firmware holds the power latch, so the console switches itself off as
 soon as the C3 resets the S3. Keep the power button pressed, or bridge it for the whole
-backup (~25 min for 16 MB). The scripts restart the C3 from the Mac themselves, so its RST
+backup (~5 min for 16 MB at 921600 baud). The scripts restart the C3 from the Mac themselves, so its RST
 button does not need to be reachable.
 
-The bridge runs at a fixed 115200 baud, so the backup takes accordingly long.
+The bridge follows esptool's baud rate change, so the scripts run at 921600 baud (override with `BAUD=115200`).
 
 The scripts need `esptool` v5 in PATH.
 

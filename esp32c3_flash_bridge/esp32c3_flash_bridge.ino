@@ -15,8 +15,8 @@
 // Arduino-IDE: Board "ESP32C3 Dev Module", USB CDC On Boot: Enabled
 //
 // Danach am Mac (Port des C3, aber --chip esp32s3):
-//   esptool.py --chip esp32s3 -p /dev/cu.usbmodemXXXX -b 115200 \
-//              --before no-reset --after no-reset read_flash 0 ALL backup.bin
+//   esptool --chip esp32s3 -p /dev/cu.usbmodemXXXX -b 921600 \
+//           --before no-reset --after no-reset read-flash 0 ALL backup.bin
 
 const int PIN_TX = 6, PIN_RX = 20, PIN_IO0 = 7, PIN_EN = 10;
 
@@ -47,9 +47,54 @@ void setup() {
   enterDownloadMode();
 }
 
+// esptool -b 921600 verbindet mit 115200 und schickt dann CHANGE_BAUDRATE (0x0F).
+// Die Bridge liest die SLIP-Pakete vom Mac mit und zieht die UART nach, sobald
+// der S3 den Befehl bestaetigt hat. Der USB-Port selbst hat keine Baudrate.
+uint32_t pendingBaud = 0;
+
+void scanHostByte(uint8_t b) {
+  static uint8_t hdr[12];
+  static int pos = -1;          // -1: ausserhalb eines Pakets
+  static bool esc = false;
+  if (b == 0xC0) {
+    // Anfrage: 00 0F len(2) chk(4) new_baud(4) old_baud(4)
+    if (pos >= 12 && hdr[0] == 0x00 && hdr[1] == 0x0F)
+      pendingBaud = hdr[8] | hdr[9] << 8 | hdr[10] << 16 | (uint32_t)hdr[11] << 24;
+    pos = 0; esc = false;
+    return;
+  }
+  if (pos < 0) return;
+  if (esc)            { b = (b == 0xDC) ? 0xC0 : 0xDB; esc = false; }
+  else if (b == 0xDB) { esc = true; return; }
+  if (pos < 12) hdr[pos] = b;
+  pos++;
+}
+
+void switchBaud() {
+  Serial1.flush();  // Befehl ist komplett raus
+  // Antwort des S3 (C0 ... C0) kommt noch mit alter Baudrate - erst durchreichen
+  int delims = 0;
+  unsigned long t0 = millis();
+  while (delims < 2 && millis() - t0 < 500) {
+    if (Serial1.available()) {
+      uint8_t b = Serial1.read();
+      Serial.write(b);
+      if (b == 0xC0) delims++;
+    }
+  }
+  delay(5);
+  Serial1.updateBaudRate(pendingBaud);
+  pendingBaud = 0;
+}
+
 void loop() {
   static uint8_t buf[1024];
   size_t n;
-  if ((n = Serial.available()))  Serial1.write(buf, Serial.read(buf, min(n, sizeof(buf))));
+  if ((n = Serial.available())) {
+    n = Serial.read(buf, min(n, sizeof(buf)));
+    for (size_t i = 0; i < n; i++) scanHostByte(buf[i]);
+    Serial1.write(buf, n);
+    if (pendingBaud) switchBaud();
+  }
   if ((n = Serial1.available())) Serial.write(buf, Serial1.read(buf, min(n, sizeof(buf))));
 }

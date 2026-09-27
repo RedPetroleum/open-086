@@ -20,8 +20,8 @@ for a in "${ARGS[@]}"; do
   case "$a" in 0x*) ;; *) [ -f "$a" ] || { echo "Datei fehlt: $a"; exit 1; };; esac
 done
 
-if   command -v esptool.py >/dev/null 2>&1; then ESPTOOL=esptool.py
-elif command -v esptool    >/dev/null 2>&1; then ESPTOOL=esptool
+if   command -v esptool    >/dev/null 2>&1; then ESPTOOL=esptool
+elif command -v esptool.py >/dev/null 2>&1; then ESPTOOL=esptool.py
 else echo "esptool fehlt. Binary: https://github.com/espressif/esptool/releases"; exit 1; fi
 
 PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1 || true)
@@ -45,9 +45,9 @@ echo "--- C3 neu starten, S3 in Download-Modus ---"
 "$ESPTOOL" --chip esp32c3 -p "$PORT" --after hard-reset chip-id >/dev/null
 sleep 3
 
-COMMON=(--chip esp32s3 -p "$PORT" -b 115200 --before no-reset --after no-reset)
+COMMON=(--chip esp32s3 -p "$PORT" -b "${BAUD:-921600}" --before no-reset --after no-reset)
 
-"$ESPTOOL" "${COMMON[@]}" write_flash --verify "${ARGS[@]}"
+"$ESPTOOL" "${COMMON[@]}" write-flash "${ARGS[@]}"
 
 echo
 echo "Fertig. Konsole am eigenen Schalter aus- und wieder einschalten."
