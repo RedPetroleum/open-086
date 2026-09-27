@@ -3,6 +3,8 @@
 # Nur lesend - es wird nichts geschrieben.
 #
 # Voraussetzung: C3 mit Bridge-Sketch am Mac, Konsole eingeschaltet und verdrahtet.
+# Im Download-Modus haelt keine Firmware die Stromversorgung - die Konsole muss
+# die ganze Zeit (~25 min) anderweitig an bleiben, z.B. Power-Taster ueberbrueckt.
 
 set -euo pipefail
 
@@ -23,6 +25,12 @@ if [ -z "$PORT" ]; then
 fi
 echo "Port:   $PORT"
 echo "Ziel:   $OUT"
+
+# C3 neu starten: sein Sketch versetzt den S3 dabei in den Download-Modus.
+# Der C3 ist fest verbaut, sein RST-Taster also nicht erreichbar.
+echo "--- C3 neu starten, S3 in Download-Modus ---"
+"$ESPTOOL" --chip esp32c3 -p "$PORT" --after hard-reset chip-id >/dev/null
+sleep 3
 
 COMMON=(--chip esp32s3 -p "$PORT" -b 115200 --before no-reset --after no-reset)
 

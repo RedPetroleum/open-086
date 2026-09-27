@@ -39,6 +39,12 @@ echo
 read -r -p "Flash ueberschreiben? Tippe ja: " OK
 [ "$OK" = "ja" ] || { echo "Abgebrochen."; exit 1; }
 
+# C3 neu starten: sein Sketch versetzt den S3 dabei in den Download-Modus.
+# Der C3 ist fest verbaut, sein RST-Taster also nicht erreichbar.
+echo "--- C3 neu starten, S3 in Download-Modus ---"
+"$ESPTOOL" --chip esp32c3 -p "$PORT" --after hard-reset chip-id >/dev/null
+sleep 3
+
 COMMON=(--chip esp32s3 -p "$PORT" -b 115200 --before no-reset --after no-reset)
 
 "$ESPTOOL" "${COMMON[@]}" write_flash --verify "${ARGS[@]}"

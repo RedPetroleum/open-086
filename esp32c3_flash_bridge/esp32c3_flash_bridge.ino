@@ -35,6 +35,12 @@ void enterDownloadMode() {
 void setup() {
   let_go(PIN_EN);
   let_go(PIN_IO0);
+  // esptool schickt Bloecke von mehreren KB. Per USB kommen die schlagartig,
+  // per UART fliessen sie nur mit 115200 ab - daher grosse Puffer.
+  // Muss vor begin() stehen.
+  Serial.setRxBufferSize(16384);
+  Serial1.setRxBufferSize(8192);
+  Serial1.setTxBufferSize(8192);
   Serial.begin(115200);                               // USB-CDC zum Mac
   Serial1.begin(115200, SERIAL_8N1, PIN_RX, PIN_TX);  // UART zur Konsole
   delay(500);
@@ -42,6 +48,8 @@ void setup() {
 }
 
 void loop() {
-  while (Serial.available())  Serial1.write(Serial.read());
-  while (Serial1.available()) Serial.write(Serial1.read());
+  static uint8_t buf[1024];
+  size_t n;
+  if ((n = Serial.available()))  Serial1.write(buf, Serial.read(buf, min(n, sizeof(buf))));
+  if ((n = Serial1.available())) Serial.write(buf, Serial1.read(buf, min(n, sizeof(buf))));
 }

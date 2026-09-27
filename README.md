@@ -58,6 +58,11 @@ Flashing the firmware of the ESP32-S3 is then possible through the ESP32-C3.
 5. `./flash_firmware.sh firmware.bin`
 6. Switch the console off and on again with its own switch
 
+In download mode no firmware holds the power latch, so the console switches itself off as
+soon as the C3 resets the S3. Keep the power button pressed, or bridge it for the whole
+backup (~25 min for 16 MB). The scripts restart the C3 from the Mac themselves, so its RST
+button does not need to be reachable.
+
 The bridge runs at a fixed 115200 baud, so the backup takes accordingly long.
 
 The scripts need `esptool` v5 in PATH.
