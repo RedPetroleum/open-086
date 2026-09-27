@@ -1,0 +1,40 @@
+#!/bin/bash
+# Sichert den kompletten Flash der HU-086 (ESP32-S3) ueber die C3-Bridge.
+# Nur lesend - es wird nichts geschrieben.
+#
+# Voraussetzung: C3 mit Bridge-Sketch am Mac, Konsole eingeschaltet und verdrahtet.
+
+set -euo pipefail
+
+OUT="${1:-backup_$(date +%Y%m%d_%H%M%S).bin}"
+
+# esptool finden (v5 heisst "esptool", aelter "esptool.py")
+if   command -v esptool.py >/dev/null 2>&1; then ESPTOOL=esptool.py
+elif command -v esptool    >/dev/null 2>&1; then ESPTOOL=esptool
+else
+  echo "esptool fehlt. Binary: https://github.com/espressif/esptool/releases"; exit 1
+fi
+
+# Port des C3 suchen
+PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1 || true)
+if [ -z "$PORT" ]; then
+  echo "Kein /dev/cu.usbmodem* gefunden. Haengt der C3 am Mac?"
+  echo "Vorhandene Ports:"; ls /dev/cu.* 2>/dev/null; exit 1
+fi
+echo "Port:   $PORT"
+echo "Ziel:   $OUT"
+
+COMMON=(--chip esp32s3 -p "$PORT" -b 115200 --before no-reset --after no-reset)
+
+echo
+echo "--- Verbindung pruefen ---"
+"$ESPTOOL" "${COMMON[@]}" flash_id
+
+echo
+echo "--- Flash auslesen (dauert bei 115200 einige Minuten) ---"
+"$ESPTOOL" "${COMMON[@]}" read_flash 0 ALL "$OUT"
+
+echo
+echo "Fertig."
+ls -l "$OUT"
+shasum -a 256 "$OUT"

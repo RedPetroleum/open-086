@@ -1,0 +1,14 @@
+.DS_Store
+
+# Commercial NES ROMs - not redistributable
+storage-backup/
+*.nes
+*.NES
+
+# Copies of the manufacturer's manual (linked in README instead)
+docs/*.webarchive
+docs/HU-086 AI Multifunktionales*.html
+docs/manual.pdf
+
+# Firmware dumps
+backup*.bin
