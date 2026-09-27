@@ -3,7 +3,9 @@
 ESP32-S3 handheld console
 [Manufacturer's manual](https://hxfbai.com/newsinfo/8859096.html)
 
-This project uses the HXFB HU-086 handheld DIY kit and adds an ESP32-C3 Super Mini in order to flash the firmware and get the full potential out of the hardware.
+This project uses the HXFB HU-086 handheld DIY kit and adds an ESP32-C3 Super Mini in order to flash a new firmware (retro-go) and get the full potential out of the hardware.
+
+<img src="pics/00.jpg" alt="HU-086 running Doom on retro-go" width="400">
 
 ## Getting started
 
@@ -40,6 +42,8 @@ Not possible through the existing USB port. An ESP32-C3 Super Mini is therefore 
 the pin header (IO0, EN, RXD, TXD, GND) and secured with a 3D-printed mount.
 Flashing the firmware of the ESP32-S3 is then possible through the ESP32-C3.
 
+<img src="pics/01.jpg" alt="Back of the HU-086 with the ESP32-C3 wired to the pin header" width="400">
+
 
 | C3 | Console |
 |---|---|
@@ -70,32 +74,9 @@ In download mode no firmware holds the power latch, so the console switches itse
 soon as the S3 is reset. Power through the console's USB-C port does not keep it on either.
 Keep the power button pressed for the whole run — a weight on it works — or bridge it.
 
-### Speed
-
-The bridge follows esptool's baud rate change, so the scripts run at 921600 baud: a full
-backup of the 16 MB flash takes about 5 minutes. Override with `BAUD=115200 ./backup_firmware.sh`.
-
-Check a backup against the chip (the S3 computes the hash itself, takes seconds):
-
-```
-esptool --chip esp32s3 -p /dev/cu.usbmodemXXXX -b 921600 --before no-reset --after no-reset \
-        verify-flash 0 backup_XXXX.bin
-```
-
-The scripts need `esptool` v5 in PATH. Backups (`backup*.bin`) are git-ignored — keep a copy
-somewhere safe, the factory firmware is not available for download.
-
-### Factory flash layout
-
-| Partition | Offset | Size | Content |
-|---|---|---|---|
-| nvs | 0x009000 | 20 KB | settings |
-| otadata | 0x00e000 | 8 KB | boot selection |
-| factory | 0x010000 | 4 MB | main firmware |
-| ffat | 0x410000 | 7 MB | game storage (`NO NAME` over USB) |
-| app0 | 0xb10000 | 4 MB | second app, presumably Xiaozhi AI |
-| model | 0xf10000 | 896 KB | speech model |
-| coredump | 0xff0000 | 64 KB | crash dumps |
+A full backup of the 16 MB flash takes about 5 minutes. The scripts need `esptool` v5 in
+PATH. Backups (`backup*.bin`) are git-ignored — keep a copy somewhere safe, the factory
+firmware is not available for download.
 
 ## retro-go
 
@@ -123,7 +104,10 @@ Changes for the HU-086:
 
 ## Hardware
 
-HCFB HU-086 kit (Aliexpress) . ESP32-S3 Supermini · 3D-printed mount
+- HXFB HU-086 kit (Aliexpress)
+- ESP32-C3 Supermini
+- 3D-printed mount
+- SD card
 
 
 ## More docs
