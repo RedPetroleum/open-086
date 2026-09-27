@@ -97,6 +97,47 @@ somewhere safe, the factory firmware is not available for download.
 | model | 0xf10000 | 896 KB | speech model |
 | coredump | 0xff0000 | 64 KB | crash dumps |
 
+## retro-go
+
+[retro-go](https://github.com/ducalex/retro-go) (NES, GB, SMS, Mega Drive, MSX, Doom, …) with its own
+target in [`retro-go/hu-086/`](retro-go/hu-086/). Built against retro-go `4ced120`
+(January 2026) and ESP-IDF 4.4.8.
+
+One-time setup:
+
+```
+git clone https://github.com/ducalex/retro-go.git ../ext/retro-go
+git clone -b v4.4.8 --depth 1 --recursive --shallow-submodules \
+    https://github.com/espressif/esp-idf.git ~/esp/esp-idf-v4.4.8
+cd ~/esp/esp-idf-v4.4.8
+SSL_CERT_FILE=/etc/ssl/cert.pem ./install.sh esp32s3
+SSL_CERT_FILE=/etc/ssl/cert.pem python3 tools/idf_tools.py install cmake ninja
+```
+
+`SSL_CERT_FILE` is needed with the python.org Python, which has no CA certificates; without it
+the toolchain downloads fail. cmake and ninja are not part of `install.sh` on macOS.
+
+Build and flash:
+
+```
+./build_retro_go.sh
+./flash_firmware.sh retro-go_*_hu-086.img
+```
+
+The image covers the first 4.6 MB (bootloader, partition table, five apps); flashing takes under
+a minute. ROMs go on a FAT32 MicroSD card (`roms/nes/`, `roms/gb/`, … — retro-go creates the
+folders on first start), not into the internal game storage.
+
+- **Menu:** SELECT+START · **Option:** SELECT+A
+- **Power off:** hold the power button for 2 s
+- No battery gauge (ADC pin unknown)
+
+Pitfalls this target works around (details in the code):
+
+- GPIO41 (LCD reset) boots muxed to JTAG. Without `gpio_reset_pin()` the panel stays in reset: backlight on, screen black.
+- The display has no CS and needs SPI mode 3; the driver had mode 0 hard-coded ([patch](retro-go/retro-go.patch)).
+- retro-go restarts the chip to switch apps; GPIO1 (power latch) is held so the console stays on.
+
 ## Hardware
 
 HCFB HU-086 kit (Aliexpress) . ESP32-S3 Supermini · 3D-printed mount

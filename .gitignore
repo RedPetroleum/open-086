@@ -12,3 +12,6 @@ docs/manual.pdf
 
 # Firmware dumps
 backup*.bin
+
+# Built images (build_retro_go.sh)
+*.img
