@@ -87,6 +87,7 @@ The patch is made for retro-go commit `4ced120`; `build_retro_go.sh` refuses oth
 ```
 git clone https://github.com/ducalex/retro-go.git ../ext/retro-go
 git -C ../ext/retro-go checkout 4ced120669750ca7228fd0414211430c1d923166
+git clone https://github.com/RedPetroleum/meloni-games.git ../meloni-games
 git clone -b v4.4.8 --depth 1 --recursive --shallow-submodules \
     https://github.com/espressif/esp-idf.git ~/esp/esp-idf-v4.4.8
 ~/esp/esp-idf-v4.4.8/install.sh esp32s3
@@ -121,28 +122,25 @@ so that sprites drawn on alternate frames (Pac-Man's ghosts) stay visible.
 
 ### Meloni Games
 
-A small Lua 5.4 game engine as its own app, in [`retro-go/meloni/`](retro-go/meloni/), for new
-games written for this console. The games themselves live in
-[meloni-games](https://github.com/RedPetroleum/meloni-games), which also has the API reference.
+Lua games written for this console, as their own app and launcher tab *Meloni Games*. The games,
+the engine (C and Lua 5.4), a desktop runner and the API reference live in
+[meloni-games](https://github.com/RedPetroleum/meloni-games). This repo only has the retro-go side.
 
-- Games are `.mlg` files (a packed game folder) in `roms/meloni/`, shown in the launcher tab
-  *Meloni Games*. Saves go to `/retro-go/saves/meloni/`.
-- **[ Update games ]** at the top of that tab connects to Wi-Fi (`/retro-go/config/wifi.json`),
+- Games are `.mlg` files (a packed game folder) in `roms/meloni/`. Saves go to
+  `/retro-go/saves/meloni/`. SELECT+START opens the menu (continue, restart, options, quit).
+- **[ Update games ]** at the top of the tab connects to Wi-Fi (`/retro-go/config/wifi.json`),
   reads `manifest.json` of the meloni-games release `latest` and downloads new or changed games
   (checked by size and sha256). Games that were removed from the release are deleted again, other
   files are not touched. A different source can be set in `/retro-go/config/meloni.json`:
   `{"manifest_url": "https://…/manifest.json"}`.
-- 320×240 at 60 fps, 8 audio channels at 32 kHz. SELECT+START opens the menu (continue, restart,
-  options, quit).
-- [`runner/`](retro-go/meloni/runner/) builds the same engine for macOS/Linux: a window with SDL2,
-  or headless with screenshots and a WAV of the sound, which the meloni-games CI uses as a test.
+- The engine comes from a pinned commit of meloni-games: `build_retro_go.sh` expects a clone in
+  `../meloni-games` (or `MELONI_GAMES=…`) and copies `engine/` at `MELONI_COMMIT` into the app.
+  After an engine change there, raise `MELONI_COMMIT` and rebuild. `MELONI_LOCAL=1` builds with
+  the working tree of meloni-games instead, to try a change on the device first.
 
 ```
-retro-go/meloni/
-  main/main.c              device side: display, audio, input, menu
-  components/meloni/       engine (platform independent): Lua API, drawing, mixer, .mlg files
-  components/lua/          Lua 5.4.7, with LUA_32BITS (the S3's FPU is single precision)
-  runner/                  desktop runner
+retro-go/meloni/main/main.c         device side: display, audio, input, menu
+retro-go/meloni/CMakeLists.txt      the app; components/ is filled from meloni-games at build time
 retro-go/launcher/meloni_update.c   the updater, copied into the launcher by build_retro_go.sh
 ```
 

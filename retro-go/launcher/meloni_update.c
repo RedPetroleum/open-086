@@ -16,7 +16,7 @@
 
 #include "meloni_update.h"
 
-// Keep in sync with MEL_API_VERSION in retro-go/meloni/components/meloni/meloni.h
+// Keep in sync with MEL_API_VERSION in meloni-games engine/meloni/meloni.h (at MELONI_COMMIT)
 #define MELONI_API_VERSION 1
 #define MELONI_DEFAULT_URL "https://github.com/RedPetroleum/meloni-games/releases/download/latest/manifest.json"
 // Optional, to use another release: {"manifest_url": "https://..."}

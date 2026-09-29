@@ -1,4 +1,5 @@
-// Meloni on retro-go: runs a Lua game (.mlg from roms/meloni/) with the engine in components/meloni.
+// Meloni on retro-go: runs a Lua game (.mlg from roms/meloni/) with the engine in components/meloni,
+// which build_retro_go.sh copies in from meloni-games (engine/, pinned by MELONI_COMMIT).
 #include <rg_system.h>
 #include <esp_heap_caps.h>
 #include <string.h>
