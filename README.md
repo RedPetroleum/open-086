@@ -102,6 +102,23 @@ Changes for the HU-086:
 - Display SPI mode 3 ([patch](retro-go/retro-go.patch))
 - Power latch (GPIO1) held across app switches
 
+### Battery level: not possible
+
+The board has no battery sense line, so retro-go shows no battery level (the factory firmware
+has none either). A test build logged the free ADC pins to the SD card, each read floating,
+with pull-down and with pull-up, on battery and while charging:
+
+| Pin | Reading | |
+|---|---|---|
+| GPIO3 | 3157 mV, ignores the pulls | tied high (ADC full scale) |
+| GPIO4 | ~490 mV, drops with pull-up | driven by something, likely the mic |
+| GPIO5 | 0 mV | tied to GND |
+| GPIO6 | ~75 mV | likely the LED |
+| GPIO12, 13 | 4992 mV, ignores the pulls | tied high (ADC2 out of range) |
+
+A voltage divider from the 3.7 V cell would read a steady 1.5–2.1 V that barely moves with
+the pulls. No pin does, and none changed when charging.
+
 ## Hardware
 
 - HXFB HU-086 kit (Aliexpress)
