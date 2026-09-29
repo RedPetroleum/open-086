@@ -177,6 +177,7 @@ the pulls. No pin does, and none changed when charging.
 
 ## More docs
 
+- [Display tearing](docs/display_tearing.md) — open to-do: findings and plan
 - [Teardown and pinout](https://gijin77.blog.jp/archives/46577853.html)
 - [Porting Xiaozhi ESP32](https://gijin77.blog.jp/archives/46637438.html) — GPIO: mic 4/5,
   speaker 7 and 15–17, LCD SPI 38–42, buttons 8/14/46, LED 6
