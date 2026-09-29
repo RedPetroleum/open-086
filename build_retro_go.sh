@@ -24,8 +24,14 @@ IDF=${IDF_PATH:-$HOME/esp/esp-idf-v4.4.8}
 mkdir -p "$RG/components/retro-go/targets/hu-086"
 cp "$HERE"/retro-go/hu-086/{config.h,env.py,sdkconfig} "$RG/components/retro-go/targets/hu-086/"
 cp "$HERE/retro-go/hu-086/hu086.c" "$RG/components/retro-go/hu086.c"
+# Atari 2600 (Stella) als eigene App
+rsync -a --delete --exclude build "$HERE/retro-go/retro-extra/" "$RG/retro-extra/"
 if git -C "$RG" apply --check "$HERE/retro-go/retro-go.patch" 2>/dev/null; then
   git -C "$RG" apply "$HERE/retro-go/retro-go.patch"
+elif ! git -C "$RG" apply --reverse --check "$HERE/retro-go/retro-go.patch" 2>/dev/null; then
+  echo "WARNUNG: retro-go.patch passt nicht (teilweise alter Stand?)."
+  echo "  git -C $RG checkout -- components launcher   # dann erneut bauen"
+  exit 1
 fi
 
 . "$IDF/export.sh" >/dev/null
