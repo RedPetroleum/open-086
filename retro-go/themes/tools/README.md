@@ -44,4 +44,12 @@ Vorschauen der Launcher-Ansicht landen in `mock/`.
 3. Skript ausführen. Der Tab-Name ist das Kürzel aus `launcher/main/applications.c`
    (z. B. `a26`), der Art-Book-Name der Dateiname in `abn/_inc/systems/`.
 
+### Eigene Systeme (nicht in Art Book Next)
+
+Bild und Logo liegen in `custom/`: `<name>_art.png` (beliebiges Bild, wird auf die schräge
+Streifenform zugeschnitten) und `<name>_logo.png` (nur der Alphakanal zählt, wie bei den
+anderen Logos). Dann wie oben den Namen in `TABS` eintragen. So ist `meloni` (Meloni Games)
+eingebunden; `meloni_logo.png` ist bis zum richtigen Logo nur der Schriftzug „Meloni“.
+Logo tauschen: Datei ersetzen, `python build_theme_v03.py` ausführen.
+
 `abn/`, `logos_png/`, `mock/` und `.venv/` sind nur Arbeitsdateien und nicht im Repo.

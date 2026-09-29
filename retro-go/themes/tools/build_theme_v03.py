@@ -21,7 +21,7 @@ TABS = [
     ("nes", "nes"), ("snes", "snes"), ("gb", "gb"), ("gbc", "gbc"), ("gba", "gba"),
     ("gw", "gameandwatch"), ("sms", "mastersystem"), ("gg", "gamegear"),
     ("md", "megadrive"), ("col", "colecovision"), ("pce", "pcengine"),
-    ("lnx", "atarilynx"), ("a26", "atari2600"), ("doom", "doom"), ("msx", "msx"),
+    ("lnx", "atarilynx"), ("a26", "atari2600"), ("meloni", "meloni"), ("doom", "doom"), ("msx", "msx"),
     ("favorite", "auto-favorites"), ("recent", "auto-lastplayed"),
 ]
 EXTRA = base.EXTRA
@@ -50,7 +50,7 @@ def background(seq):
 def carousel(name):
     """Large logo for the carousel view: anti-aliased white on black, 2px black outline,
     magenta (Retro-Go transparency) around it. Cropped to the logo."""
-    src = Image.open(os.path.join(base.LOGOS, name + ".png")).convert("RGBA")
+    src = Image.open(base.logo_path(name)).convert("RGBA")
     src = src.crop(src.getchannel("A").getbbox())
     mw, mh = CAROUSEL_MAX
     scale = min(mw / src.width, mh / src.height)
@@ -125,10 +125,13 @@ Die meisten Systemlogos basieren auf den Neuzeichnungen von Dan Patrick
 Idee der Multi-Artwork-Systemansicht: GenoCL.
 Die Bilder wurden fuer Retro-Go verkleinert, zusammengesetzt und umgefaerbt.
 Dieses Theme steht unter derselben Lizenz (CC BY-NC-SA 2.0), nicht kommerziell.
+
+Meloni Games (Tab `meloni`): Bild und Logo sind eigene, nicht aus Art Book Next
+(`tools/custom/meloni_art.png`, `tools/custom/meloni_logo.png`).
 """
 
 if __name__ == "__main__":
     main()
     # mocks
-    for tab in ["nes", "lnx", "a26", "doom"]:
+    for tab in ["nes", "lnx", "a26", "meloni", "doom"]:
         carousel_view(tab).resize((640, 480), Image.NEAREST).save(os.path.join(MOCK, f"v03_{tab}.png"))

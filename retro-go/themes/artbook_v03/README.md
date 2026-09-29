@@ -18,3 +18,6 @@ Die meisten Systemlogos basieren auf den Neuzeichnungen von Dan Patrick
 Idee der Multi-Artwork-Systemansicht: GenoCL.
 Die Bilder wurden fuer Retro-Go verkleinert, zusammengesetzt und umgefaerbt.
 Dieses Theme steht unter derselben Lizenz (CC BY-NC-SA 2.0), nicht kommerziell.
+
+Meloni Games (Tab `meloni`): Bild und Logo sind eigene, nicht aus Art Book Next
+(`tools/custom/meloni_art.png`, `tools/custom/meloni_logo.png`).

@@ -9,6 +9,9 @@ from PIL import Image, ImageChops, ImageFilter
 HERE = os.path.dirname(os.path.abspath(__file__))
 ART = os.path.join(HERE, "abn/_inc/systems/artwork-default")
 LOGOS = os.path.join(HERE, "logos_png")
+# Own systems that Art Book Next doesn't have: custom/<name>_art.png (any picture, cut to the
+# strip shape) and custom/<name>_logo.png (only the alpha channel is used, like the logos)
+CUSTOM = os.path.join(HERE, "custom")
 OUT = os.path.join(HERE, "..", "artbook")
 MOCK = os.path.join(HERE, "mock")
 W, H = 320, 240
@@ -71,9 +74,31 @@ THEME = {
 }
 
 
+def custom_art(path):
+    """A picture cut to the Art Book strip: scaled to cover 454x1080, centred, and given the
+    slanted shape of the Art Book artwork (alpha of _default.png)."""
+    shape = Image.open(os.path.join(ART, "_default.png")).getchannel("A")
+    src = Image.open(path).convert("RGB")
+    scale = max(shape.width / src.width, shape.height / src.height)
+    src = src.resize((round(src.width * scale), round(src.height * scale)), Image.LANCZOS)
+    left, top = (src.width - shape.width) // 2, (src.height - shape.height) // 2
+    im = src.crop((left, top, left + shape.width, top + shape.height)).convert("RGBA")
+    im.putalpha(shape)
+    return im
+
+
 def strip(name):
-    im = Image.open(os.path.join(ART, name + ".png")).convert("RGBA")
+    custom = os.path.join(CUSTOM, name + "_art.png")
+    if os.path.exists(custom):
+        im = custom_art(custom)
+    else:
+        im = Image.open(os.path.join(ART, name + ".png")).convert("RGBA")
     return im.resize((STRIP_W, STRIP_H), Image.LANCZOS)
+
+
+def logo_path(name):
+    custom = os.path.join(CUSTOM, name + "_logo.png")
+    return custom if os.path.exists(custom) else os.path.join(LOGOS, name + ".png")
 
 
 def background(seq):
@@ -91,7 +116,7 @@ def background(seq):
 def logo_banner(name, max_w=190, max_h=22):
     """White logo with 1px black outline on magenta (Retro-Go transparency), 272x24,
     horizontally centred on screen (banner is drawn at x=47)."""
-    src = Image.open(os.path.join(LOGOS, name + ".png")).convert("RGBA")
+    src = Image.open(logo_path(name)).convert("RGBA")
     src = src.crop(src.getchannel("A").getbbox())
     scale = min(max_w / src.width, max_h / src.height)
     size = (max(1, round(src.width * scale)), max(1, round(src.height * scale)))
