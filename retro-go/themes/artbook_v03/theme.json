@@ -1,0 +1,52 @@
+{
+    "description": "Art Book v03 (Knulli-Stil)",
+    "website": "https://github.com/anthonycaccese/art-book-next-es",
+    "author": "Peter Wilke, Artwork/Logos: Anthony Caccese (CC BY-NC-SA 2.0)",
+    "dialog": {
+        "background": "0x1082",
+        "foreground": "0xFFFF",
+        "border": "0x4208",
+        "header": "0xFFFF",
+        "scrollbar": "0xAD55",
+        "shadow": "none",
+        "item_standard": "0xFFFF",
+        "item_disabled": "0x52AA",
+        "item_message": "0xAD55"
+    },
+    "launcher_1": {
+        "__comment": "Art Book Default: weiss auf schwarz",
+        "background": "0x0000",
+        "foreground": "0xFFFF",
+        "list_standard_bg": "transparent",
+        "list_standard_fg": "0x9CD3",
+        "list_selected_bg": "transparent",
+        "list_selected_fg": "0xFFFF"
+    },
+    "launcher_2": {
+        "__comment": "Art Book mit Auswahlbalken",
+        "background": "0x0000",
+        "foreground": "0xFFFF",
+        "list_standard_bg": "transparent",
+        "list_standard_fg": "0x9CD3",
+        "list_selected_bg": "0x4208",
+        "list_selected_fg": "0xFFFF"
+    },
+    "launcher_3": {
+        "__comment": "SNES-Schema (lila)",
+        "background": "0x20C8",
+        "foreground": "0xFFFF",
+        "list_standard_bg": "transparent",
+        "list_standard_fg": "0x7B72",
+        "list_selected_bg": "0x3995",
+        "list_selected_fg": "0xFFFF"
+    },
+    "launcher_4": {
+        "__comment": "Famicom-Schema (rot/creme)",
+        "background": "0x2841",
+        "foreground": "0xDEB6",
+        "list_standard_bg": "transparent",
+        "list_standard_fg": "0x8C10",
+        "list_selected_bg": "0xA8A3",
+        "list_selected_fg": "0xDEB6"
+    }
+}

@@ -15,3 +15,6 @@ backup*.bin
 
 # Built images (build_retro_go.sh)
 *.img
+
+# macOS
+.DS_Store
