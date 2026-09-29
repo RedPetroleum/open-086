@@ -18,3 +18,6 @@ backup*.bin
 
 # macOS
 .DS_Store
+
+# Meloni desktop runner build
+retro-go/meloni/runner/build/

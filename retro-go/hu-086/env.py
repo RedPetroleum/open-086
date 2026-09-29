@@ -5,6 +5,6 @@
 IDF_TARGET = "esp32s3"
 # .fw file format, if supported by the device
 FW_FORMAT = "none"
-# Default apps to build when none is specified; retro-extra (Atari 2600) comes from
-# retro-go/retro-extra in this repo, build_retro_go.sh copies it in
-DEFAULT_APPS = "launcher retro-core prboom-go gwenesis fmsx retro-extra"
+# Default apps to build when none is specified; retro-extra (Atari 2600) and meloni (Lua games) come from
+# retro-go/retro-extra and retro-go/meloni in this repo, build_retro_go.sh copies them in
+DEFAULT_APPS = "launcher retro-core prboom-go gwenesis fmsx retro-extra meloni"

@@ -36,15 +36,97 @@ index 70991c9..db8850b 100644
          .queue_size = SPI_TRANSACTION_COUNT, // We want to be able to queue 5 transactions at a time
          .pre_cb = &spi_pre_transfer_cb,      // Specify pre-transfer callback to handle D/C line and SPI lock
 diff --git a/launcher/main/applications.c b/launcher/main/applications.c
-index 6af4768..a38af53 100644
+index 6af4768..cca9a9d 100644
 --- a/launcher/main/applications.c
 +++ b/launcher/main/applications.c
-@@ -702,7 +702,7 @@ void applications_init(void)
+@@ -8,6 +8,7 @@
+ #include "applications.h"
+ #include "bookmarks.h"
+ #include "gui.h"
++#include "meloni_update.h"
+ 
+ #define CRC_CACHE_MAGIC 0x21112223
+ #define CRC_CACHE_MAX_ENTRIES 8192
+@@ -25,6 +26,14 @@ static bool crc_cache_dirty = true;
+ static retro_app_t *apps[24];
+ static int apps_count = 0;
+ 
++// Pseudo entry at the top of the Meloni tab that runs the game updater
++static retro_file_t meloni_update_entry = {.name = "Update games", .missing_cover = 0xFFFF};
++
++static bool has_update_entry(const retro_app_t *app)
++{
++    return strcmp(app->short_name, "meloni") == 0;
++}
++
+ static int scan_folder_cb(const rg_scandir_t *entry, void *arg)
+ {
+     retro_app_t *app = (retro_app_t *)arg;
+@@ -367,10 +376,28 @@ static void tab_refresh(tab_t *tab, const char *selected)
+         }
+     }
+ 
++    if (has_update_entry(app) && folder == basepath)
++    {
++        gui_resize_list(tab, items_count + 1);
++        listbox_item_t *item = &tab->listbox.items[items_count++];
++        snprintf(item->text, sizeof(item->text), "%s", _("[ Update games ]"));
++        item->order = 0;
++        item->group = 0;
++        item->arg = &meloni_update_entry;
++    }
++
+     gui_resize_list(tab, items_count);
+     gui_sort_list(tab);
+ 
+-    if (items_count == 0)
++    if (items_count == 1 && has_update_entry(app) && folder == basepath)
++    {
++        gui_resize_list(tab, 3);
++        sprintf(tab->listbox.items[1].text, " ");
++        sprintf(tab->listbox.items[2].text, _("No games yet: select Update games"));
++        tab->listbox.items[1].arg = tab->listbox.items[2].arg = NULL;
++        tab->listbox.cursor = 0;
++    }
++    else if (items_count == 0)
+     {
+         gui_resize_list(tab, 6);
+         sprintf(tab->listbox.items[0].text, _("Welcome to Retro-Go!"));
+@@ -446,12 +473,25 @@ static void event_handler(gui_event_t event, tab_t *tab)
+     }
+     else if (event == TAB_IDLE)
+     {
+-        if (file && !tab->preview && gui.idle_counter == 1)
++        if (file && file != &meloni_update_entry && !tab->preview && gui.idle_counter == 1)
+             gui_load_preview(tab);
+     }
+     else if (event == TAB_ACTION)
+     {
+-        if (file)
++        if (file == &meloni_update_entry)
++        {
++            if (meloni_update_run())
++            {
++                // Rescan the folder
++                rg_bucket_free(app->filenames);
++                app->filenames = rg_bucket_create(4096);
++                app->files_count = 0;
++                app->initialized = false;
++                application_init(app);
++                tab_refresh(tab, NULL);
++            }
++        }
++        else if (file)
+         {
+             if (file->type == RETRO_TYPE_FOLDER)
+             {
+@@ -702,7 +742,8 @@ void applications_init(void)
      application("Coleco ColecoVision", "col", "col rom zip", "retro-core", 0);
      application("NEC PC Engine", "pce", "pce zip", "retro-core", 0);
      application("Atari Lynx", "lnx", "lnx zip", "retro-core", 64);
 -    // application("Atari 2600", "a26", "a26 zip", "stella-go", 0);
 +    application("Atari 2600", "a26", "a26 bin zip", "retro-extra", 0);
++    application("Meloni Games", "meloni", "mlg", "meloni", 0);
      // application("Neo Geo Pocket Color", "ngp", "ngp ngc zip", "ngpocket-go", 0);
      application("DOOM", "doom", "wad zip", "prboom-go", 0);
      application("MSX", "msx", "rom mx1 mx2 dsk", "fmsx", 0);
@@ -127,14 +209,15 @@ index fc3fe84..084b15a 100644
  void gui_draw_list(tab_t *tab);
  void gui_draw_tab_indicator(void);
 diff --git a/rg_tool.py b/rg_tool.py
-index e583781..d6c5b1d 100755
+index e583781..f42c746 100755
 --- a/rg_tool.py
 +++ b/rg_tool.py
-@@ -24,6 +24,7 @@ PROJECT_APPS = {
+@@ -24,6 +24,8 @@ PROJECT_APPS = {
    'prboom-go':    [0, 16, 786432],
    'gwenesis':     [0, 16, 1048576],
    'fmsx':         [0, 16, 589824],
 +  'retro-extra':  [0, 16, 1572864],
++  'meloni':       [0, 16, 1048576],
  }
  # PROJECT_APPS = {}
  # for t in glob.glob("*/CMakeLists.txt"):

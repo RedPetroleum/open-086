@@ -105,6 +105,7 @@ Changes for the HU-086:
 - Power latch (GPIO1) held across app switches
 - Launcher: optional large carousel logo per tab (`carousel_<tab>.png`, used by `artbook_v03`)
 - Atari 2600 as an extra app (see below)
+- Meloni Games: Lua games as an extra app, with an updater in the launcher (see below)
 
 ### Atari 2600
 
@@ -117,6 +118,33 @@ overflow in the audio path (random crashes), aspect ratio, zip ROMs. ROMs go to 
 Playable, not perfect: emulation reaches about 53 of 60 fps and the SPI display shows about
 30, so retro-go skips frames. *Frame blending* (options menu, on by default) merges two frames
 so that sprites drawn on alternate frames (Pac-Man's ghosts) stay visible.
+
+### Meloni Games
+
+A small Lua 5.4 game engine as its own app, in [`retro-go/meloni/`](retro-go/meloni/), for new
+games written for this console. The games themselves live in
+[meloni-games](https://github.com/RedPetroleum/meloni-games), which also has the API reference.
+
+- Games are `.mlg` files (a packed game folder) in `roms/meloni/`, shown in the launcher tab
+  *Meloni Games*. Saves go to `/retro-go/saves/meloni/`.
+- **[ Update games ]** at the top of that tab connects to Wi-Fi (`/retro-go/config/wifi.json`),
+  reads `manifest.json` of the meloni-games release `latest` and downloads new or changed games
+  (checked by size and sha256). Games that were removed from the release are deleted again, other
+  files are not touched. A different source can be set in `/retro-go/config/meloni.json`:
+  `{"manifest_url": "https://…/manifest.json"}`.
+- 320×240 at 60 fps, 8 audio channels at 32 kHz. SELECT+START opens the menu (continue, restart,
+  options, quit).
+- [`runner/`](retro-go/meloni/runner/) builds the same engine for macOS/Linux: a window with SDL2,
+  or headless with screenshots and a WAV of the sound, which the meloni-games CI uses as a test.
+
+```
+retro-go/meloni/
+  main/main.c              device side: display, audio, input, menu
+  components/meloni/       engine (platform independent): Lua API, drawing, mixer, .mlg files
+  components/lua/          Lua 5.4.7, with LUA_32BITS (the S3's FPU is single precision)
+  runner/                  desktop runner
+retro-go/launcher/meloni_update.c   the updater, copied into the launcher by build_retro_go.sh
+```
 
 ### Themes
 
