@@ -17,7 +17,7 @@
 #define MAX_SKIP 4
 #define LUA_ARENA (3 * 1024 * 1024)
 #define AUDIO_RING 4096                     // frames (128 ms), power of two
-#define AUDIO_LEAD (MEL_SAMPLE_RATE / 20)   // 50 ms
+#define AUDIO_LEAD (MEL_SAMPLE_RATE / 50)   // 20 ms: more is heard as sound lagging behind (50 ms was)
 
 static rg_app_t *app;
 static char save_path[RG_PATH_MAX];
@@ -51,7 +51,8 @@ static uint8_t *lua_arena;
 // room, and its DMA buffers hold only about one frame of sound (~17 ms): called from the main loop it
 // paced the game, and in every frame that took longer (most frames with drawing, ~21 ms) the sound ran
 // dry and the time was lost for good, ~10 % of the game speed. Now the loop is paced by the clock and
-// the ring starts with AUDIO_LEAD of silence, so a frame may run that much late without a gap.
+// the ring starts with AUDIO_LEAD of silence, so a frame may run that much late without a gap (frames
+// with drawing end ~5 ms late). The lead is also how much later the sound comes.
 static rg_audio_frame_t audio_ring[AUDIO_RING];
 static uint32_t audio_w, audio_r; // frames written by the main loop / taken by the audio task
 static TaskHandle_t audio_task;
