@@ -13,12 +13,11 @@ part, at a varying height. The desktop runner of meloni-games and its screenshot
 ## Why it is not the game or the engine
 
 - Every obstacle is drawn in one piece per frame (one sprite, one x coordinate).
-- `retro-go/meloni/main/main.c` hands the engine framebuffer to `rg_display_submit()` only when
-  `rg_display_sync(false)` reports that the display is free, and with frameskip (default since
-  2026-10-02) the engine draws only then, so the display task never reads a half-drawn frame.
-  Without frameskip (menu option, for comparison) every update is drawn and a frame is copied
-  with `memcpy` into one of two `rg_surface_t` when the display is free. Half-copied frames can't
-  happen in software either way.
+- `retro-go/meloni/main/main.c` copies each finished frame with `memcpy` into one of two
+  `rg_surface_t` and hands it to `rg_display_submit()` only when the display has taken the
+  previous one (with frameskip, the default since 2026-10-02, a small presenter task waits for
+  that; without, the frame is dropped if the display is busy). The surface being sent is never
+  written. Half-copied frames can't happen in software.
 
 ## Likely cause: SPI LCD tearing without a sync signal
 

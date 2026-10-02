@@ -8,31 +8,37 @@
 #include "meloni.h"
 
 #define FRAME_US (1000000 / MEL_FPS)
-// With frameskip at least every (MAX_SKIP + 1)th update is drawn when the display is free (12 fps).
+#define FRAME_BYTES (MEL_WIDTH * MEL_HEIGHT * 2)
+// With frameskip at least every (MAX_SKIP + 1)th update is drawn when a frame can be handed over.
 // If even that is too slow, the game slows down rather than showing hardly anything.
 #define MAX_SKIP 4
 
 static rg_app_t *app;
 static char save_path[RG_PATH_MAX];
 
-// Frameskip (default): _update runs 60 times per second, _draw only when the display has taken the
-// previous frame and the game is not behind. The display task reads the engine framebuffer directly:
-// it converts it line by line into its own DMA buffers and is done with it once rg_display_sync()
-// reports it free, so the engine must not draw while the display is busy.
-// Without frameskip (to compare): every update is drawn, and a frame is copied into one of two
-// PSRAM surfaces when the display is free, otherwise it is thrown away.
+// Finished frames are copied from the engine framebuffer (internal RAM) into one of two surfaces in
+// PSRAM, which the display task sends out. The display takes one frame at a time and needs ~30 to
+// 60 ms for a full one, much longer than drawing.
+// Frameskip (default): _update runs 60 times per second. A frame is drawn only when the presenter
+// task is idle, i.e. the display has started on the previous frame; the presenter hands the new one
+// over the moment the display is done, so drawing and sending overlap and every drawn frame is shown.
+// Behind schedule, drawing waits until the updates have caught up.
+// Without frameskip (to compare, the behaviour before): every update is drawn, a frame is handed over
+// only if the display happens to be free, otherwise it is thrown away.
 static bool frameskip = true;
-static rg_surface_t screen; // the engine framebuffer as a surface
+static rg_surface_t screen; // the engine framebuffer as a surface, for screenshots
 static rg_surface_t *copies[2];
-static int current;
+static int current; // the copy to fill next
+static rg_task_t *presenter;
 
-// Frame statistics over one second, drawn over the game with "Show stats" and logged
+// Frame statistics over one second, drawn over the game with "Show stats"
 static bool show_stats;
-static char stats_text[320] = "measuring ...";
+static char stats_text[512] = "measuring ...";
 static struct
 {
     int64_t start, update_us, draw_us, other_us;
     int updates, draws, update_max, draw_max;
+    rg_display_counters_t display;
 } st;
 
 void mel_plat_log(const char *msg)
@@ -57,26 +63,35 @@ void *mel_plat_realloc(void *ptr, size_t size)
     return p ? p : heap_caps_realloc(ptr, size, MALLOC_CAP_8BIT);
 }
 
-static void present_copy(void)
+// Hands frames to the display. rg_display_submit() blocks until the display has taken the previous
+// frame; the message stays queued until then, so rg_task_messages_waiting() tells whether a frame is
+// still waiting. Once submitted, the copy before it is free again (the display is done reading it).
+static void presenter_task(void *arg)
 {
-    if (!copies[0] || !copies[1])
+    rg_task_msg_t msg;
+    while (rg_task_peek(&msg))
     {
-        // Only needed without frameskip; PSRAM, the ~170 KB of internal heap left are needed by
-        // SD card, audio and display
-        copies[0] = rg_surface_create(MEL_WIDTH, MEL_HEIGHT, RG_PIXEL_565_LE, MEM_SLOW);
-        copies[1] = rg_surface_create(MEL_WIDTH, MEL_HEIGHT, RG_PIXEL_565_LE, MEM_SLOW);
-        if (!copies[0] || !copies[1])
-        {
-            RG_LOGE("Out of memory for the frame copies, back to frameskip");
-            rg_surface_free(copies[0]), copies[0] = NULL;
-            rg_surface_free(copies[1]), copies[1] = NULL;
-            frameskip = true;
-            return;
-        }
+        if (msg.type == RG_TASK_MSG_STOP)
+            break;
+        rg_display_submit(msg.dataPtr, 0);
+        rg_task_receive(&msg);
     }
+}
+
+static bool presenter_idle(void)
+{
+    return rg_task_messages_waiting(presenter) == 0;
+}
+
+// Copies the finished frame and hands it over; only call when presenter_idle()
+static void present(bool wait_for_display)
+{
     rg_surface_t *s = copies[current];
-    memcpy(s->data, mel_framebuffer(), MEL_WIDTH * MEL_HEIGHT * 2);
-    rg_display_submit(s, 0);
+    memcpy(s->data, mel_framebuffer(), FRAME_BYTES);
+    if (wait_for_display)
+        rg_task_send(presenter, &(rg_task_msg_t){.dataPtr = s});
+    else
+        rg_display_submit(s, 0); // the display is free, this doesn't block
     current ^= 1;
 }
 
@@ -84,6 +99,7 @@ static void stats_reset(void)
 {
     memset(&st, 0, sizeof(st));
     st.start = rg_system_timer();
+    st.display = rg_display_get_counters();
 }
 
 // "12.3" from microseconds (newlib nano has no float printf)
@@ -99,35 +115,31 @@ static void stats_tick(void)
     int64_t elapsed = rg_system_timer() - st.start;
     if (elapsed < 1000000)
         return;
-    char a[MS_LEN], b[MS_LEN], c[MS_LEN], d[MS_LEN], e[MS_LEN];
-    int busy = (int)((st.update_us + st.draw_us + st.other_us) * 100 / elapsed);
+    rg_display_counters_t dc = rg_display_get_counters();
+    int shown = dc.totalFrames - st.display.totalFrames;
+    int64_t display_us = dc.busyTime - st.display.busyTime;
+    char a[MS_LEN], b[MS_LEN], c[MS_LEN], d[MS_LEN], e[MS_LEN], f[MS_LEN];
     snprintf(stats_text, sizeof(stats_text),
-             "speed %d%%  fps %d  cpu %d%%  skip %s\n"
+             "speed %d%%  cpu %d%%  skip %s\n"
              "update %s ms  max %s\n"
              "draw   %s ms  max %s  rest %s\n"
+             "drawn %d  shown %d  display %s ms\n"
              "lua %d KB  internal free %d KB",
-             (int)(st.updates * 100LL * 1000000 / MEL_FPS / elapsed), (int)(st.draws * 1000000LL / elapsed), busy,
-             frameskip ? "on" : "off",
+             (int)(st.updates * 100LL * 1000000 / MEL_FPS / elapsed),
+             (int)((st.update_us + st.draw_us + st.other_us) * 100 / elapsed), frameskip ? "on" : "off",
              ms(a, st.updates ? st.update_us / st.updates : 0), ms(b, st.update_max),
              ms(c, st.draws ? st.draw_us / st.draws : 0), ms(d, st.draw_max),
              ms(e, st.updates ? st.other_us / st.updates : 0),
+             (int)(st.draws * 1000000LL / elapsed), (int)(shown * 1000000LL / elapsed),
+             ms(f, shown ? display_us / shown : 0),
              (int)(mel_mem_used() / 1024), (int)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
-    if (show_stats)
-    {
-        char line[sizeof(stats_text)];
-        snprintf(line, sizeof(line), "%s", stats_text);
-        for (char *p = line; *p; p++)
-            if (*p == '\n')
-                *p = '|';
-        RG_LOGI("stats: %s", line);
-    }
     stats_reset();
 }
 
 static void event_handler(int event, void *arg)
 {
     if (event == RG_EVENT_REDRAW)
-        rg_display_submit(&screen, 0);
+        rg_display_submit(copies[current ^ 1], 0); // the newest frame
 }
 
 static bool screenshot_handler(const char *filename, int width, int height)
@@ -231,7 +243,6 @@ void app_main(void)
     frameskip = rg_settings_get_number(NS_APP, "Frameskip", 1) != 0;
     show_stats = rg_settings_get_number(NS_APP, "ShowStats", 0) != 0;
 
-    // The engine draws into its own framebuffer in internal RAM, the display task reads it from there
     screen = (rg_surface_t){
         .width = MEL_WIDTH,
         .height = MEL_HEIGHT,
@@ -239,6 +250,14 @@ void app_main(void)
         .format = RG_PIXEL_565_LE,
         .data = (void *)mel_framebuffer(),
     };
+    // The engine draws into its own framebuffer in internal RAM; the copies for the display go to
+    // PSRAM, the ~170 KB of internal heap left are needed by SD card, audio and display
+    copies[0] = rg_surface_create(MEL_WIDTH, MEL_HEIGHT, RG_PIXEL_565_LE, MEM_SLOW);
+    copies[1] = rg_surface_create(MEL_WIDTH, MEL_HEIGHT, RG_PIXEL_565_LE, MEM_SLOW);
+    if (!copies[0] || !copies[1])
+        RG_PANIC("Out of memory");
+    // Higher priority than the main task, so a waiting frame goes out as soon as the display is free
+    presenter = rg_task_create("meloni_present", &presenter_task, NULL, 3 * 1024, RG_TASK_PRIORITY_5, 0);
 
     if (!app->romPath || !app->romPath[0])
         RG_PANIC("No game selected");
@@ -262,7 +281,10 @@ void app_main(void)
         uint32_t joystick = rg_input_read_gamepad();
         if (joystick & (RG_KEY_MENU | RG_KEY_OPTION))
         {
-            rg_display_sync(true); // the menu draws over the screen, the display must be done with the game
+            // The menu draws over the screen: the last frame must be out first
+            while (!presenter_idle())
+                rg_task_delay(10);
+            rg_display_sync(true);
             if (joystick & RG_KEY_MENU)
                 game_menu();
             else
@@ -277,9 +299,7 @@ void app_main(void)
         int64_t t1 = rg_system_timer();
         next_frame += FRAME_US; // when this update should be over
 
-        // Draw only when the display is free (it can't show more anyway: a full frame takes ~31 ms
-        // at 40 MHz) and the update came in time, else catch up first
-        bool draw = !frameskip || (rg_display_sync(false) && (t1 <= next_frame || skipped >= MAX_SKIP));
+        bool draw = !frameskip || (presenter_idle() && (t1 <= next_frame || skipped >= MAX_SKIP));
         int64_t t2 = t1;
         if (draw)
         {
@@ -288,9 +308,9 @@ void app_main(void)
             if (show_stats)
                 mel_draw_overlay(stats_text);
             if (frameskip)
-                rg_display_submit(&screen, 0);
-            else if (rg_display_sync(false))
-                present_copy();
+                present(true);
+            else if (presenter_idle() && rg_display_sync(false))
+                present(false);
             skipped = 0;
         }
         else
