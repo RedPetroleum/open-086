@@ -23,7 +23,7 @@ RG=${RETRO_GO:-$HERE/../ext/retro-go}
 IDF=${IDF_PATH:-$HOME/esp/esp-idf-v4.4.8}
 RG_COMMIT=4ced120669750ca7228fd0414211430c1d923166   # retro-go 1.46-8, 2026-01-19
 MG=${MELONI_GAMES:-$HERE/../meloni-games}
-MELONI_COMMIT=89236b6753c4a6e5502246877a47e50777060216   # meloni-games, Engine API 3, mel_update/mel_draw (frameskip)
+MELONI_COMMIT=eee5f48868b2b1fb9b7b279e3f618ad3a3b111f5   # meloni-games, Engine API 3, frameskip, GC in small steps
 
 [ -d "$RG/components/retro-go" ] || {
   echo "retro-go fehlt in $RG:"
