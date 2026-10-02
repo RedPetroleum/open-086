@@ -17,7 +17,8 @@
 #define MAX_SKIP 4
 #define LUA_ARENA (3 * 1024 * 1024)
 #define AUDIO_RING 4096                     // frames (128 ms), power of two
-#define AUDIO_LEAD (MEL_SAMPLE_RATE / 50)   // 20 ms: more is heard as sound lagging behind (50 ms was)
+// 35 ms: with 50 ms jump sounds came noticeably late, with 20 ms the music was a bit rough in the world
+#define AUDIO_LEAD (MEL_SAMPLE_RATE * 35 / 1000)
 
 static rg_app_t *app;
 static char save_path[RG_PATH_MAX];
