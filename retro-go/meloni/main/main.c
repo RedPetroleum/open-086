@@ -2,6 +2,8 @@
 // which build_retro_go.sh copies in from meloni-games (engine/, pinned by MELONI_COMMIT).
 #include <rg_system.h>
 #include <esp_heap_caps.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <multi_heap.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,6 +16,8 @@
 // If even that is too slow, the game slows down rather than showing hardly anything.
 #define MAX_SKIP 4
 #define LUA_ARENA (3 * 1024 * 1024)
+#define AUDIO_RING 4096                     // frames (128 ms), power of two
+#define AUDIO_LEAD (MEL_SAMPLE_RATE / 20)   // 50 ms
 
 static rg_app_t *app;
 static char save_path[RG_PATH_MAX];
@@ -24,8 +28,7 @@ static char save_path[RG_PATH_MAX];
 // Frameskip (default): _update runs 60 times per second. A frame is drawn only when the presenter
 // task is idle, i.e. the display has started on the previous frame; the presenter hands the new one
 // over the moment the display is done, so drawing and sending overlap and every drawn frame is shown.
-// Whether there is time to draw is judged by the main loop's own work (debt below), not by the clock:
-// the audio driver blocks and paces the loop, so time lost in a long frame can't be made up anyway.
+// Whether there is time to draw is judged by the main loop's own work (debt below).
 // Without frameskip (to compare, the behaviour before): every update is drawn, a frame is handed over
 // only if the display happens to be free, otherwise it is thrown away.
 static bool frameskip = true;
@@ -43,6 +46,15 @@ static int64_t debt;
 // from it, so it needs no lock. When it is full, the system heap takes over.
 static multi_heap_handle_t lua_heap;
 static uint8_t *lua_arena;
+
+// Sound goes through a ring buffer to an audio task. rg_audio_submit() blocks until the I2S driver has
+// room, and its DMA buffers hold only about one frame of sound (~17 ms): called from the main loop it
+// paced the game, and in every frame that took longer (most frames with drawing, ~21 ms) the sound ran
+// dry and the time was lost for good, ~10 % of the game speed. Now the loop is paced by the clock and
+// the ring starts with AUDIO_LEAD of silence, so a frame may run that much late without a gap.
+static rg_audio_frame_t audio_ring[AUDIO_RING];
+static uint32_t audio_w, audio_r; // frames written by the main loop / taken by the audio task
+static TaskHandle_t audio_task;
 
 // Frame statistics over one second, drawn over the game with "Show stats"
 static bool show_stats;
@@ -136,6 +148,48 @@ static void present(bool wait_for_display)
     current ^= 1;
 }
 
+static void audio_task_main(void *arg)
+{
+    static rg_audio_frame_t chunk[256];
+    uint32_t r = 0;
+    while (true)
+    {
+        uint32_t n = __atomic_load_n(&audio_w, __ATOMIC_ACQUIRE) - r;
+        if (n == 0)
+        {
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
+        if (n > RG_COUNT(chunk))
+            n = RG_COUNT(chunk);
+        for (uint32_t i = 0; i < n; i++)
+            chunk[i] = audio_ring[(r + i) & (AUDIO_RING - 1)];
+        r += n;
+        __atomic_store_n(&audio_r, r, __ATOMIC_RELEASE);
+        rg_audio_submit(chunk, n);
+    }
+}
+
+// Queues sound for the audio task, NULL for silence. A full ring drops the rest (the loop ran ahead).
+static void audio_push(const rg_audio_frame_t *frames, uint32_t count)
+{
+    uint32_t space = AUDIO_RING - (audio_w - __atomic_load_n(&audio_r, __ATOMIC_ACQUIRE));
+    if (count > space)
+        count = space;
+    for (uint32_t i = 0; i < count; i++)
+        audio_ring[(audio_w + i) & (AUDIO_RING - 1)] = frames ? frames[i] : (rg_audio_frame_t){0};
+    __atomic_store_n(&audio_w, audio_w + count, __ATOMIC_RELEASE);
+    xTaskNotifyGive(audio_task);
+}
+
+// Tops the queued sound up to AUDIO_LEAD with silence, at the start and whenever the loop stood still
+static void audio_lead(void)
+{
+    uint32_t queued = audio_w - __atomic_load_n(&audio_r, __ATOMIC_ACQUIRE);
+    if (queued < AUDIO_LEAD)
+        audio_push(NULL, AUDIO_LEAD - queued);
+}
+
 static void stats_reset(void)
 {
     memset(&st, 0, sizeof(st));
@@ -161,13 +215,14 @@ static void stats_tick(void)
     int64_t display_us = dc.busyTime - st.display.busyTime;
     char a[MS_LEN], b[MS_LEN], c[MS_LEN], d[MS_LEN], e[MS_LEN], f[MS_LEN];
     snprintf(stats_text, sizeof(stats_text),
-             "speed %d%%  cpu %d%%  skip %s\n"
+             "speed %d%%  cpu %d%%  skip %s  snd %d\n"
              "update %s ms  max %s\n"
              "draw   %s ms  max %s  rest %s\n"
              "drawn %d  shown %d  display %s ms\n"
              "lua %d KB  free %d KB  psram %d KB",
              (int)(st.updates * 100LL * 1000000 / MEL_FPS / elapsed),
              (int)((st.update_us + st.draw_us + st.other_us) * 100 / elapsed), frameskip ? "on" : "off",
+             (int)((audio_w - __atomic_load_n(&audio_r, __ATOMIC_ACQUIRE)) * 1000 / MEL_SAMPLE_RATE),
              ms(a, st.updates ? st.update_us / st.updates : 0), ms(b, st.update_max),
              ms(c, st.draws ? st.draw_us / st.draws : 0), ms(d, st.draw_max),
              ms(e, st.updates ? st.other_us / st.updates : 0),
@@ -306,6 +361,7 @@ void app_main(void)
         heap_caps_free(lua_arena);
         lua_arena = NULL;
     }
+    xTaskCreatePinnedToCore(&audio_task_main, "meloni_audio", 3 * 1024, NULL, RG_TASK_PRIORITY_5, &audio_task, 0);
     // Higher priority than the main task, so a waiting frame goes out as soon as the display is free
     presenter = rg_task_create("meloni_present", &presenter_task, NULL, 3 * 1024, RG_TASK_PRIORITY_5, 0);
 
@@ -325,6 +381,7 @@ void app_main(void)
     int sample_acc = 0, skipped = 0;
     int64_t next_frame = rg_system_timer();
     stats_reset();
+    audio_lead();
 
     while (true)
     {
@@ -341,6 +398,7 @@ void app_main(void)
                 rg_gui_options_menu();
             next_frame = rg_system_timer();
             debt = 0;
+            audio_lead(); // the sound ran dry during the menu
             stats_reset();
             continue;
         }
@@ -389,13 +447,16 @@ void app_main(void)
         debt = RG_MIN(RG_MAX(debt + (t3 - t0) - FRAME_US, 0), 4 * FRAME_US);
 
         rg_system_tick(t3 - t0);
-        rg_audio_submit(audio, count);
+        audio_push(audio, count);
 
-        // Pace to 60 fps in case the audio driver doesn't block
+        // Pace to 60 fps
         int64_t wait = next_frame - rg_system_timer();
         if (wait > 1000)
             rg_usleep(wait - 500);
         else if (wait < -100000)
+        {
             next_frame = rg_system_timer(); // far behind: don't try to catch up
+            audio_lead();
+        }
     }
 }
