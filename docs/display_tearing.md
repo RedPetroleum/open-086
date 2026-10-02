@@ -13,10 +13,12 @@ part, at a varying height. The desktop runner of meloni-games and its screenshot
 ## Why it is not the game or the engine
 
 - Every obstacle is drawn in one piece per frame (one sprite, one x coordinate).
-- `present()` in `retro-go/meloni/main/main.c` copies the engine framebuffer with `memcpy` into
-  one of two `rg_surface_t` and calls `rg_display_submit()`, but only when `rg_display_sync(false)`
-  reports that the display is free. Otherwise the frame is skipped. Half-copied frames can't
-  happen in software.
+- `retro-go/meloni/main/main.c` hands the engine framebuffer to `rg_display_submit()` only when
+  `rg_display_sync(false)` reports that the display is free, and with frameskip (default since
+  2026-10-02) the engine draws only then, so the display task never reads a half-drawn frame.
+  Without frameskip (menu option, for comparison) every update is drawn and a frame is copied
+  with `memcpy` into one of two `rg_surface_t` when the display is free. Half-copied frames can't
+  happen in software either way.
 
 ## Likely cause: SPI LCD tearing without a sync signal
 
@@ -53,7 +55,7 @@ In native orientation (no MV), starting on the TE edge:
 
 Cost of native orientation:
 
-- Rotating is cheap: a tiled transpose instead of the `memcpy` in `present()` (estimated a few
+- Rotating is cheap: a tiled transpose into a buffer before `rg_display_submit()` (estimated a few
   ms, not measured).
 - The hard part is `rg_gui` (menu, options), which keeps drawing in landscape. Meloni would have
   to switch MADCTL back when opening the menu, or send game frames past `rg_display`. Changing
@@ -83,7 +85,7 @@ Cost of native orientation:
 ## Relevant code
 
 - `retro-go/hu-086/config.h`: SPI clock, SPI mode, display init (MADCTL, COLMOD, inversion)
-- `retro-go/meloni/main/main.c`: `present()`, main loop with `rg_display_sync(false)`
+- `retro-go/meloni/main/main.c`: main loop with frameskip and `rg_display_sync(false)`
 - `retro-go/retro-go.patch`: patch for `drivers/display/ili9341.h` (configurable SPI mode)
 - retro-go source at commit 4ced120 (retro-go 1.46-8): `components/retro-go/rg_display.c`
   (`write_update`, `display_task`, partial updates), `components/retro-go/drivers/display/ili9341.h`
