@@ -2,6 +2,7 @@
 // which build_retro_go.sh copies in from meloni-games (engine/, pinned by MELONI_COMMIT).
 #include <rg_system.h>
 #include <esp_heap_caps.h>
+#include <multi_heap.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -12,6 +13,7 @@
 // With frameskip at least every (MAX_SKIP + 1)th update is drawn when a frame can be handed over.
 // If even that is too slow, the game slows down rather than showing hardly anything.
 #define MAX_SKIP 4
+#define LUA_ARENA (3 * 1024 * 1024)
 
 static rg_app_t *app;
 static char save_path[RG_PATH_MAX];
@@ -22,7 +24,8 @@ static char save_path[RG_PATH_MAX];
 // Frameskip (default): _update runs 60 times per second. A frame is drawn only when the presenter
 // task is idle, i.e. the display has started on the previous frame; the presenter hands the new one
 // over the moment the display is done, so drawing and sending overlap and every drawn frame is shown.
-// Behind schedule, drawing waits until the updates have caught up.
+// Whether there is time to draw is judged by the main loop's own work (debt below), not by the clock:
+// the audio driver blocks and paces the loop, so time lost in a long frame can't be made up anyway.
 // Without frameskip (to compare, the behaviour before): every update is drawn, a frame is handed over
 // only if the display happens to be free, otherwise it is thrown away.
 static bool frameskip = true;
@@ -30,6 +33,16 @@ static rg_surface_t screen; // the engine framebuffer as a surface, for screensh
 static rg_surface_t *copies[2];
 static int current; // the copy to fill next
 static rg_task_t *presenter;
+// Work beyond one frame's time still to be made up (us): an update with drawing (~20 ms) usually
+// doesn't fit into one frame, then the next update goes without drawing
+static int64_t debt;
+
+// The Lua heap is a heap of its own in one block of PSRAM. Lua makes tens of thousands of small
+// allocations; in the system heap, retro-go's statistics walk all of them once a second with the
+// heap locked and interrupts off, which stalled the game for ~45 ms. Only the main task allocates
+// from it, so it needs no lock. When it is full, the system heap takes over.
+static multi_heap_handle_t lua_heap;
+static uint8_t *lua_arena;
 
 // Frame statistics over one second, drawn over the game with "Show stats"
 static bool show_stats;
@@ -51,16 +64,44 @@ int64_t mel_plat_time_us(void)
     return rg_system_timer();
 }
 
+static bool in_arena(void *p)
+{
+    return lua_arena && (uint8_t *)p >= lua_arena && (uint8_t *)p < lua_arena + LUA_ARENA;
+}
+
 // The Lua heap goes to PSRAM (8 MB), the internal RAM is kept for the display and audio buffers
 void *mel_plat_realloc(void *ptr, size_t size)
 {
     if (size == 0)
     {
-        heap_caps_free(ptr);
+        if (in_arena(ptr))
+            multi_heap_free(lua_heap, ptr);
+        else
+            heap_caps_free(ptr);
         return NULL;
     }
-    void *p = heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    return p ? p : heap_caps_realloc(ptr, size, MALLOC_CAP_8BIT);
+    if (lua_heap && (!ptr || in_arena(ptr)))
+    {
+        void *p = multi_heap_realloc(lua_heap, ptr, size);
+        if (p)
+            return p;
+    }
+    if (ptr && !in_arena(ptr))
+    {
+        void *p = heap_caps_realloc(ptr, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        return p ? p : heap_caps_realloc(ptr, size, MALLOC_CAP_8BIT);
+    }
+    // A new block or one that has to leave the full arena
+    void *p = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!p)
+        p = heap_caps_malloc(size, MALLOC_CAP_8BIT);
+    if (p && ptr)
+    {
+        size_t old = multi_heap_get_allocated_size(lua_heap, ptr);
+        memcpy(p, ptr, old < size ? old : size);
+        multi_heap_free(lua_heap, ptr);
+    }
+    return p;
 }
 
 // Hands frames to the display. rg_display_submit() blocks until the display has taken the previous
@@ -124,7 +165,7 @@ static void stats_tick(void)
              "update %s ms  max %s\n"
              "draw   %s ms  max %s  rest %s\n"
              "drawn %d  shown %d  display %s ms\n"
-             "lua %d KB  internal free %d KB",
+             "lua %d KB  free %d KB  psram %d KB",
              (int)(st.updates * 100LL * 1000000 / MEL_FPS / elapsed),
              (int)((st.update_us + st.draw_us + st.other_us) * 100 / elapsed), frameskip ? "on" : "off",
              ms(a, st.updates ? st.update_us / st.updates : 0), ms(b, st.update_max),
@@ -132,7 +173,8 @@ static void stats_tick(void)
              ms(e, st.updates ? st.other_us / st.updates : 0),
              (int)(st.draws * 1000000LL / elapsed), (int)(shown * 1000000LL / elapsed),
              ms(f, shown ? display_us / shown : 0),
-             (int)(mel_mem_used() / 1024), (int)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+             (int)(mel_mem_used() / 1024), (int)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (int)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
     stats_reset();
 }
 
@@ -256,6 +298,14 @@ void app_main(void)
     copies[1] = rg_surface_create(MEL_WIDTH, MEL_HEIGHT, RG_PIXEL_565_LE, MEM_SLOW);
     if (!copies[0] || !copies[1])
         RG_PANIC("Out of memory");
+    if ((lua_arena = heap_caps_malloc(LUA_ARENA, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)))
+        lua_heap = multi_heap_register(lua_arena, LUA_ARENA);
+    if (!lua_heap)
+    {
+        RG_LOGE("No Lua arena, the Lua heap uses the system heap");
+        heap_caps_free(lua_arena);
+        lua_arena = NULL;
+    }
     // Higher priority than the main task, so a waiting frame goes out as soon as the display is free
     presenter = rg_task_create("meloni_present", &presenter_task, NULL, 3 * 1024, RG_TASK_PRIORITY_5, 0);
 
@@ -290,6 +340,7 @@ void app_main(void)
             else
                 rg_gui_options_menu();
             next_frame = rg_system_timer();
+            debt = 0;
             stats_reset();
             continue;
         }
@@ -299,7 +350,7 @@ void app_main(void)
         int64_t t1 = rg_system_timer();
         next_frame += FRAME_US; // when this update should be over
 
-        bool draw = !frameskip || (presenter_idle() && (t1 <= next_frame || skipped >= MAX_SKIP));
+        bool draw = !frameskip || (presenter_idle() && (debt == 0 || skipped >= MAX_SKIP));
         int64_t t2 = t1;
         if (draw)
         {
@@ -333,6 +384,9 @@ void app_main(void)
         }
         st.other_us += t3 - t2;
         stats_tick();
+
+        // A long stall is lost time anyway, don't let it suppress drawing for long
+        debt = RG_MIN(RG_MAX(debt + (t3 - t0) - FRAME_US, 0), 4 * FRAME_US);
 
         rg_system_tick(t3 - t0);
         rg_audio_submit(audio, count);
